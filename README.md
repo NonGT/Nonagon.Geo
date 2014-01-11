@@ -1,4 +1,4 @@
-Nonagon.Foundation
-==================
+Nonagon.Geo
+===========
 
-The Core Nonagon Framework.
+The geographical utility.
