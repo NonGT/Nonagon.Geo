@@ -61,6 +61,8 @@
     <Compile Include="ShapeFileSetting.cs" />
     <Compile Include="ShapeFileMap.cs" />
     <Compile Include="ShapeFileInfo.cs" />
+    <Compile Include="Clipper.cs" />
+    <Compile Include="Utils.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <ItemGroup>

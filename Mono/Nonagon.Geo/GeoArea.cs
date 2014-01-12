@@ -11,14 +11,18 @@ using GeoAPI.Geometries;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
 
+using Nonagon.Geo;
 using Nonagon.Geo.Properties;
 
 namespace Nonagon.Geo
 {
+	/// <summary>
+	/// The Geographical data helper class to work with GADM ShapeFile.
+	/// </summary>
 	public static class GeoArea
 	{
-		private static readonly Dictionary<String, ShapeFileInfo> shapeFileInfoLookup;
-		private static readonly String coordCachePath;
+		static readonly Dictionary<String, ShapeFileInfo> shapeFileInfoLookup;
+		static readonly String coordCachePath;
 
 		static GeoArea()
 		{
@@ -46,15 +50,17 @@ namespace Nonagon.Geo
 			coordCachePath = setting.CoordinateCachePath;
 		}
 
+		/// <summary>
+		/// Gets the coordinates from specified district key.
+		/// </summary>
+		/// <returns>The coordinates. Multiple group of coordinates separated by top level array element.</returns>
+		/// <param name="districtKey">District key as country-district-...</param>
 		public static IEnumerable<IEnumerable<Coordinate>> GetCoordinates(String districtKey)
 		{
 			var geo = new List<IEnumerable<Coordinate>>();
 
 			if (districtKey == null)
 				return null;
-
-			// In case some provice changed.
-			districtKey = OverrideDistrictKeyForSpecial(districtKey);
 
 			var level = 0;
 			var distictKeys = districtKey.Split('-');
@@ -231,14 +237,100 @@ namespace Nonagon.Geo
 			return geo;
 		}
 
-		private static String OverrideDistrictKeyForSpecial(String districtKey)
+		/// <summary>
+		/// Gets the union coordinates of specified district key.
+		/// </summary>
+		/// <returns>The coordinates.</returns>
+		/// <param name="districtKeys">Array of district key.</param>
+		public static IEnumerable<Coordinate> GetUnionCoordinates(String[] districtKeys)
 		{
-			if (districtKey == "thailand-bung kan")
+			// Using Clipper library to do polygon operation.
+			var clipper = new Clipper();
+			foreach (var dk in districtKeys)
 			{
-				return "thailand-nong khai-bung kan";
+				var polies = new List<List<IntPoint>>();
+
+				var areas = GetCoordinates(dk);
+				foreach(var a in areas)
+				{
+					polies.Add(new List<IntPoint>());
+
+					foreach (var c in a)
+						polies[0].Add(new IntPoint(Utils.ToLong(c.X), Utils.ToLong(c.Y)));
+				}
+
+				clipper.AddPaths(polies, PolyType.ptSubject, true);
 			}
 
-			return districtKey;
+			var solution = new List<List<IntPoint>>();
+
+			clipper.Execute(ClipType.ctUnion, solution, 
+				PolyFillType.pftEvenOdd, PolyFillType.pftEvenOdd);
+
+			var coords = new List<Coordinate>();
+
+			foreach (var areas in solution)
+			{
+				foreach(var p in areas)
+				{
+					var c = new Coordinate() { X = Utils.ToDouble(p.X), Y = Utils.ToDouble(p.Y) };
+					coords.Add(c);
+				}
+			}
+
+			return coords;
+		}
+
+		/// <summary>
+		/// Subtract 2 polygon coordinates by top - bottom.
+		/// </summary>
+		/// <returns>The subtracted coordinates.</returns>
+		/// <param name="top">Top polygon coordinates.</param>
+		/// <param name="bottom">Bottom polygon coordinates.</param>
+		public static IEnumerable<Coordinate> Subtract(IEnumerable<Coordinate> top, IEnumerable<Coordinate> bottom)
+		{
+			// Using Clipper library to do polygon operation.
+			var clipper = new Clipper();
+
+			var topPolies = new List<List<IntPoint>>();
+			topPolies.Add(new List<IntPoint>());
+
+			foreach(var c in top)
+			{
+				topPolies[0].Add(
+					new IntPoint(Utils.ToLong(c.X), Utils.ToLong(c.Y)));
+			}
+
+			clipper.AddPaths(topPolies, PolyType.ptSubject, true);
+
+			var bottomPolies = new List<List<IntPoint>>();
+			bottomPolies.Add(new List<IntPoint>());
+
+			foreach(var c in bottom)
+			{
+				bottomPolies[0].Add(
+					new IntPoint(Utils.ToLong(c.X), Utils.ToLong(c.Y)));
+			}
+
+			clipper.AddPaths(bottomPolies, PolyType.ptClip, true);
+
+			var solution = new List<List<IntPoint>>();
+
+			clipper.Execute(ClipType.ctUnion, solution, 
+				PolyFillType.pftEvenOdd, PolyFillType.pftEvenOdd);
+
+			var coords = new List<Coordinate>();
+
+			foreach (var areas in solution)
+			{
+				foreach(var p in areas)
+				{
+					var c = new Coordinate() { X = Utils.ToDouble(p.X), Y = Utils.ToDouble(p.Y) };
+					coords.Add(c);
+				}
+			}
+
+			return coords;
 		}
 	}
 }
