@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Text;
 using System.Web;
 using System.Collections.Generic;
 using System.Configuration;
@@ -10,8 +12,6 @@ using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
 
 using Nonagon.Geo.Properties;
-using System.IO;
-using System.Text;
 
 namespace Nonagon.Geo
 {
@@ -46,9 +46,9 @@ namespace Nonagon.Geo
 			coordCachePath = setting.CoordinateCachePath;
 		}
 
-		public static List<Coordinate> GetCoordinates(String districtKey)
+		public static IEnumerable<IEnumerable<Coordinate>> GetCoordinates(String districtKey)
 		{
-			var geo = new List<Coordinate>();
+			var geo = new List<IEnumerable<Coordinate>>();
 
 			if (districtKey == null)
 				return null;
@@ -95,13 +95,19 @@ namespace Nonagon.Geo
 					using (var streamReader = File.OpenText(cachePath))
 					{
 						String s = streamReader.ReadToEnd();
-						var coordinates = s.Split('-').Select(
+						var coordinates = s.Split('|').Select(
 							ss => { 
-								var p = ss.Split(','); 
-								return new Coordinate { 
-									X = Double.Parse(p[0]),
-									Y = Double.Parse(p[1])
-								};
+								var areas = ss.Split('-').Select(
+									ax => {
+
+										var p = ax.Split(',');
+										return new Coordinate { 
+											X = Double.Parse(p[0]),
+											Y = Double.Parse(p[1])
+										};
+									});
+
+								return areas;
 							});
 
 						geo.AddRange(coordinates);
@@ -152,15 +158,36 @@ namespace Nonagon.Geo
 
 					if (districtKey == shapeDistictKey)
 					{
-						var startIndex = 0;
+						// Find the duplicate coordinates. It is the polygon loop.
+						var endPointLookup = geometry.Coordinates.
+						                     GroupBy(k => k.X + "," + k.Y).
+						                     Where(g => g.Count() >= 2).
+						                     ToLookup(g => g.Key, null);
 
-						//HARDCODED: Hack start point to fix wrong shape.
-						if (districtKey == "thailand-prachuap khiri khan")
-							startIndex = 500;
+						String endPoint = null;
+						var coords = new List<Coordinate>();
 
-						for (var i = startIndex; i < geometry.Coordinates.Length; i++)
+						for (var i = 0; i < geometry.Coordinates.Length; i++)
 						{
-							geo.Add(geometry.Coordinates[i]);
+							var key = geometry.Coordinates[i].X + "," +
+							          geometry.Coordinates[i].Y;
+
+							coords.Add(geometry.Coordinates[i]);
+
+							if (endPoint == null)
+							{
+								if (endPointLookup.Contains(key))
+									endPoint = key;
+							}
+							else
+							{
+								if (endPoint == key)
+								{
+									endPoint = null;
+									geo.Add(coords);
+									coords = new List<Coordinate>();
+								}
+							}
 						}
 
 						break;
@@ -183,14 +210,19 @@ namespace Nonagon.Geo
 					Directory.CreateDirectory(physicalCachePath);
 
 				var sb = new StringBuilder();
-				foreach (var coord in geo)
+				foreach (var coords in geo)
 				{
-					sb.AppendFormat("{0},{1}", coord.X, coord.Y);
-					sb.Append("-");
+					foreach (var coord in coords)
+					{
+						sb.AppendFormat("{0},{1}", coord.X, coord.Y);
+						sb.Append("-");
+					}
+
+					sb.Remove(sb.Length - 1, 1);
+					sb.Append("|");
 				}
 
-				if (sb.Length > 0)
-					sb = sb.Remove(sb.Length - 1, 1);
+				sb.Remove(sb.Length - 1, 1);
 
 				var coordCache = sb.ToString();
 				File.WriteAllText(cachePath, coordCache);
@@ -202,10 +234,11 @@ namespace Nonagon.Geo
 		private static String OverrideDistrictKeyForSpecial(String districtKey)
 		{
 			if (districtKey == "thailand-bung kan")
+			{
 				return "thailand-nong khai-bung kan";
+			}
 
 			return districtKey;
 		}
 	}
 }
-
