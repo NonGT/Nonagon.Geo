@@ -116,7 +116,8 @@ namespace Nonagon.Geo
 								return areas;
 							});
 
-						geo.AddRange(coordinates);
+						if (coordinates.Any(Enumerable.Any))
+							geo.AddRange(coordinates);
 					}
 
 					return geo;
@@ -173,27 +174,38 @@ namespace Nonagon.Geo
 						String endPoint = null;
 						var coords = new List<Coordinate>();
 
-						for (var i = 0; i < geometry.Coordinates.Length; i++)
+						try
 						{
-							var key = geometry.Coordinates[i].X + "," +
-							          geometry.Coordinates[i].Y;
-
-							coords.Add(geometry.Coordinates[i]);
-
-							if (endPoint == null)
+							for (long i = 0; i < geometry.Coordinates.LongLength; i++)
 							{
-								if (endPointLookup.Contains(key))
-									endPoint = key;
-							}
-							else
-							{
-								if (endPoint == key)
+								if(geometry.Coordinates[i] == null)
+									continue;
+
+								var key = geometry.Coordinates[i].X + "," +
+								          geometry.Coordinates[i].Y;
+
+								coords.Add(geometry.Coordinates[i]);
+
+								if (endPoint == null)
 								{
-									endPoint = null;
-									geo.Add(coords);
-									coords = new List<Coordinate>();
+									if (endPointLookup.Contains(key))
+										endPoint = key;
+								}
+								else
+								{
+									if (endPoint == key)
+									{
+										endPoint = null;
+										geo.Add(coords);
+										coords = new List<Coordinate>();
+									}
 								}
 							}
+						}
+						catch(Exception ex)
+						{
+							Console.WriteLine(ex.Message);
+							throw;
 						}
 
 						break;
@@ -224,11 +236,14 @@ namespace Nonagon.Geo
 						sb.Append("-");
 					}
 
-					sb.Remove(sb.Length - 1, 1);
+					if(sb.Length > 0)
+						sb.Remove(sb.Length - 1, 1);
+
 					sb.Append("|");
 				}
 
-				sb.Remove(sb.Length - 1, 1);
+				if(sb.Length > 0)
+					sb.Remove(sb.Length - 1, 1);
 
 				var coordCache = sb.ToString();
 				File.WriteAllText(cachePath, coordCache);
@@ -316,7 +331,7 @@ namespace Nonagon.Geo
 
 			var solution = new List<List<IntPoint>>();
 
-			clipper.Execute(ClipType.ctUnion, solution, 
+			clipper.Execute(ClipType.ctXor, solution, 
 				PolyFillType.pftEvenOdd, PolyFillType.pftEvenOdd);
 
 			var coords = new List<Coordinate>();
